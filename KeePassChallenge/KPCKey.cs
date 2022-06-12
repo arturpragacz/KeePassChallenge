@@ -18,9 +18,7 @@
 using System.Linq;
 using System.Windows.Forms;
 
-using KeePassLib;
 using KeePassLib.Cryptography;
-using KeePassLib.Cryptography.KeyDerivation;
 using KeePassLib.Keys;
 using KeePassLib.Security;
 using KeePassLib.Utility;
@@ -28,22 +26,21 @@ using KeePassLib.Utility;
 namespace KeePassChallenge {
 	internal sealed class KPCKey : KcpCustomKey {
 		private readonly KPCSettings m_settings;
-
 		private byte[] m_challenge;
 		private ProtectedBinary m_key;
 
-		public KPCKey(string name, KPCSettings settings) : base(name) {
+		public byte[] Challenge => m_challenge;
+
+		public KPCKey(string name, KPCSettings settings, byte[] challenge, bool paddingPKCS = false) : base(name) {
 			m_settings = settings;
+			SetKey(challenge, paddingPKCS);
 		}
 
-		public override ProtectedBinary KeyData(PwDatabase pd) {
-			var challenge = GetChallenge(pd, out var paddingPKCS);
-			return KeyData(challenge, paddingPKCS);
-		}
+		public override ProtectedBinary KeyData => m_key;
 
 		public bool SetChallenge(byte[] challenge) {
 			try {
-				KeyData(challenge);
+				SetKey(challenge);
 				return true;
 			}
 			catch (KPCOperationCancelledException) {
@@ -51,12 +48,12 @@ namespace KeePassChallenge {
 			}
 		}
 
-		private ProtectedBinary KeyData(byte[] challenge, bool paddingPKCS = false) {
+		private void SetKey(byte[] challenge, bool paddingPKCS = false) {
 			if (challenge == null)
 				throw new KPCException("Null challenge.");
 
 			if (m_challenge != null && challenge.SequenceEqual(m_challenge))
-				return m_key;
+				return;
 
 			byte[] response;
 			using (var yubikey = new Yubikey())
@@ -92,21 +89,6 @@ namespace KeePassChallenge {
 			MemUtil.ZeroByteArray(sha);
 
 			m_challenge = challenge;
-
-			return m_key;
-		}
-
-		private byte[] GetChallenge(PwDatabase pd, out bool paddingPKCS) {
-			var challenge = pd.PublicCustomData.GetByteArray(KPCSettings.CustomDataChallengeString);
-			paddingPKCS = false;
-
-			if (challenge == null) {
-				var kdf = KdfPool.Get(pd.KdfParameters.KdfUuid);
-				challenge = kdf.GetSeed(pd.KdfParameters);
-				paddingPKCS = true;
-			}
-
-			return challenge;
 		}
 
 		private byte[] RecoveryMode(byte[] rawChallenge, bool paddingPKCS) {

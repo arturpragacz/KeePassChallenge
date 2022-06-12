@@ -15,14 +15,11 @@
 	along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-using System;
 using System.Diagnostics;
 using System.Windows.Forms;
 
 using KeePass.Forms;
 using KeePass.Plugins;
-using KeePassLib;
-using KeePassLib.Cryptography;
 
 namespace KeePassChallenge {
 	public sealed class KeePassChallengeExt : Plugin {
@@ -48,7 +45,9 @@ namespace KeePassChallenge {
 			m_prov = new KPCKeyProvider(m_settings);
 			m_host.KeyProviderPool.Add(m_prov);
 
+			m_host.MainWindow.FileCreated += OnFileCreated;
 			m_host.MainWindow.FileOpened += OnFileOpened;
+			m_host.MainWindow.MasterKeyChanged += OnMasterKeyChanged;
 
 			return true;
 		}
@@ -57,8 +56,13 @@ namespace KeePassChallenge {
 			if (m_host != null) {
 				m_host.KeyProviderPool.Remove(m_prov);
 
-				m_prov = null;
+				m_host.MainWindow.FileCreated -= OnFileCreated;
+				m_host.MainWindow.FileOpened -= OnFileOpened;
+				m_host.MainWindow.MasterKeyChanged -= OnMasterKeyChanged;
+
 				m_host = null;
+				m_prov = null;
+				m_settings = null;
 			}
 		}
 
@@ -68,7 +72,7 @@ namespace KeePassChallenge {
 				var newChallenge = new ToolStripMenuItem {
 					Text = "Generate a new challenge"
 				};
-				newChallenge.Click += (s, e) => NewChallenge(m_host.Database);
+				newChallenge.Click += (s, e) => { m_prov.NewChallenge(m_host.Database); UpdateUI(true); };
 
 				var yubikeySlot1 = new ToolStripMenuItem {
 					Text = "Slot 1",
@@ -99,32 +103,29 @@ namespace KeePassChallenge {
 			return null; // no menu items in other locations
 		}
 
-		private void NewChallenge(PwDatabase pd) {
-			if (pd.MasterKey == null)
-				return;
+		private void OnFileCreated(object sender, FileCreatedEventArgs e) {
+			if (e == null) { Debug.Assert(false); return; }
+			var pd = e.Database;
 
-			var key = (KPCKey)pd.MasterKey.GetUserKey(typeof(KPCKey));
-			if (key != null) {
-				var challenge = CryptoRandom.Instance.GetRandomBytes(32);
-				if (key.SetChallenge(challenge))
-					pd.PublicCustomData.SetByteArray(KPCSettings.CustomDataChallengeString, challenge);
-			}
+			m_prov.OnFileCreated(pd);
 		}
 
 		private void OnFileOpened(object sender, FileOpenedEventArgs e) {
 			if (e == null) { Debug.Assert(false); return; }
 			var pd = e.Database;
 
-			if (!pd.MasterKey.ContainsType(typeof(KPCKey)))
-				return;
+			m_prov.OnFileOpened(pd);
+		}
 
-			//if (pd.PublicCustomData.GetTypeOf(KPCSettings.CustomDataChallengeString) == null) {
-			//	var kdf = KdfPool.Get(pd.KdfParameters.KdfUuid);
-			//	var challenge = kdf.GetSeed(pd.KdfParameters);
-			//	pd.PublicCustomData.SetByteArray(KPCSettings.CustomDataChallengeString, challenge);
-			//}
+		private void OnMasterKeyChanged(object sender, MasterKeyChangedEventArgs e) {
+			if (e == null) { Debug.Assert(false); return; }
+			var pd = e.Database;
 
-			NewChallenge(pd);
+			m_prov.OnMasterKeyChanged(pd);
+		}
+
+		private void UpdateUI(bool setModified) {
+			m_host.MainWindow.UpdateUI(false, null, false, null, false, null, setModified);
 		}
 	}
 }
