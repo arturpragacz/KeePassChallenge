@@ -48,7 +48,8 @@
     <Compile Include="BaseForm.Designer.cs">
       <DependentUpon>BaseForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="Exceptions.cs" />
+    <Compile Include="KPCExtensions.cs" />
+    <Compile Include="KPCExceptions.cs" />
     <Compile Include="KeePassChallengeExt.cs" />
     <Compile Include="KeyEntryForm.cs">
       <SubType>Form</SubType>
